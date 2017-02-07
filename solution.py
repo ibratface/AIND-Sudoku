@@ -10,18 +10,6 @@ def assign_value(values, box, value):
         assignments.append(values.copy())
     return values
 
-def naked_twins(values):
-    """Eliminate values using the naked twins strategy.
-    Args:
-        values(dict): a dictionary of the form {'box_name': '123456789', ...}
-
-    Returns:
-        the values dictionary with the naked twins eliminated from peers.
-    """
-    
-    # Find all instances of naked twins
-    # Eliminate the naked twins as possibilities for their peers
-
 rows = 'ABCDEFGHI'
 cols = '123456789'
 
@@ -33,13 +21,31 @@ boxes = cross(rows, cols)
 row_units = [cross(r, cols) for r in rows]
 column_units = [cross(rows, c) for c in cols]
 square_units = [cross(rs, cs) for rs in ('ABC','DEF','GHI') for cs in ('123','456','789')]
-diag_units = [[r+c for r, c in zip(rows,cols)]]
-diag_units.append([r+c for r,c in zip(rows[::-1], cols)])
-
+diag_units = [[r+c for r, c in zip(rows, cols)], [r+c for r,c in zip(rows[::-1], cols)]]
 unitlist = row_units + column_units + square_units + diag_units
 units = dict((s, [u for u in unitlist if s in u]) for s in boxes)
 peers = dict((s, set(sum(units[s],[]))-set([s])) for s in boxes)
 
+def naked_twins(values):
+    """Eliminate values using the naked twins strategy.
+    Args:
+        values(dict): a dictionary of the form {'box_name': '123456789', ...}
+
+    Returns:
+        the values dictionary with the naked twins eliminated from peers.
+    """
+    for unit in unitlist:
+        # Find all instances of naked twins
+        twins = [(a, b) for a in unit for b in unit if a != b and set(values[a]) == set(values[b]) and len(values[a]) == 2]
+        if len(twins) == 2 and set(twins[0]) == set(twins[1]): # we only expect one pair of twins
+            # Eliminate the naked twins as possibilities for their peers
+            for b in set(unit) - set(twins[0]):
+                for digit in values[twins[0][0]]:
+                    assign_value(values, b, values[b].replace(digit, ''))
+        else:
+            # print('weirdness', twins)
+            pass
+    return values
 
 def grid_values(grid):
     """
@@ -76,24 +82,49 @@ def display(values):
     print
 
 def eliminate(values):
+    """Eliminate values from peers of each box with a single value.
+
+    Go through all the boxes, and whenever there is a box with a single value,
+    eliminate this value from the set of values of all its peers.
+
+    Args:
+        values: Sudoku in dictionary form.
+    Returns:
+        Resulting Sudoku in dictionary form after eliminating values.
+    """
     solved_values = [box for box in values.keys() if len(values[box]) == 1]
     for box in solved_values:
         digit = values[box]
         for peer in peers[box]:
-            #values[peer] = values[peer].replace(digit,'')
+            # values[peer] = values[peer].replace(digit,'')
             assign_value(values, peer, values[peer].replace(digit,''))
     return values
 
 def only_choice(values):
+    """Finalize all values that are the only choice for a unit.
+
+    Go through all the units, and whenever there is a unit with a value
+    that only fits in one box, assign the value to this box.
+
+    Input: Sudoku in dictionary form.
+    Output: Resulting Sudoku in dictionary form after filling in only choices.
+    """
     for unit in unitlist:
         for digit in '123456789':
             dplaces = [box for box in unit if digit in values[box]]
             if len(dplaces) == 1:
-                #values[dplaces[0]] = digit
+                # values[dplaces[0]] = digit
                 assign_value(values, dplaces[0], digit)
     return values
 
 def reduce_puzzle(values):
+    """
+    Iterate eliminate() and only_choice(). If at some point, there is a box with no available values, return False.
+    If the sudoku is solved, return the sudoku.
+    If after an iteration of both functions, the sudoku remains the same, return the sudoku.
+    Input: A sudoku in dictionary form.
+    Output: The resulting sudoku in dictionary form.
+    """
     stalled = False
     while not stalled:
         # Check how many boxes have a determined value
@@ -102,6 +133,8 @@ def reduce_puzzle(values):
         values = eliminate(values)
         # Use the Only Choice Strategy
         values = only_choice(values)
+        # Use the Naked Twins Strategy
+        values = naked_twins(values)
         # Check how many boxes have a determined value, to compare
         solved_values_after = len([box for box in values.keys() if len(values[box]) == 1])
         # If no new values were added, stop the loop.
@@ -124,7 +157,7 @@ def search(values):
     # Now use recurrence to solve each one of the resulting sudokus, and
     for value in values[s]:
         new_sudoku = values.copy()
-        #new_sudoku[s] = value
+        # new_sudoku[s] = value
         assign_value(new_sudoku, s, value)
         attempt = search(new_sudoku)
         if attempt:
